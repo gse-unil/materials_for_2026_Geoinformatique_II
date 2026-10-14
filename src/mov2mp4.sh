@@ -20,6 +20,8 @@
 #   -s TEXT    Start frame text. Default: "DEMO START". Use "" to disable.
 #   -e TEXT    End frame text. Default: "DEMO END". Use "" to disable.
 #   -d DUR     Duration of start/end frames in seconds. Default: 2
+#   -c         Compress: scale to 1512 px wide (unless -w given) and use
+#              H.264 Main profile, for smaller, widely compatible files
 #   -x        Dry run — print commands only
 #
 # Examples:
@@ -27,6 +29,7 @@
 #   ./mov2mp4.sh -w 1200 -q 26 *.mov
 #   ./mov2mp4.sh -r ~/Movies -o ~/Downloads/mp4s
 #   ./mov2mp4.sh -s "DEMO START" -e "DEMO END" recording.mov
+#   ./mov2mp4.sh -c recording.mov          # smaller file (1512 px, Main profile)
 #
 set -euo pipefail
 
@@ -43,6 +46,8 @@ START_TEXT="DEMO START"
 END_TEXT="DEMO END"
 FRAME_DUR=2
 DRY_RUN=false
+COMPRESS=false
+COMPRESS_WIDTH=1512
 DIR_MODE=""
 INPUTS=()
 
@@ -56,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         -s) START_TEXT="$2"; shift 2 ;;
         -e) END_TEXT="$2"; shift 2 ;;
         -d) FRAME_DUR="$2"; shift 2 ;;
+        -c) COMPRESS=true; shift ;;
         -x) DRY_RUN=true; shift ;;
         -r) DIR_MODE="$2"; shift 2 ;;
         -h|--help) sed -n '2,/^$/s/^# \?//p' "$0"; exit 0 ;;
@@ -63,6 +69,12 @@ while [[ $# -gt 0 ]]; do
         *)  INPUTS+=("$1"); shift ;;
     esac
 done
+
+profile_args=()
+if $COMPRESS; then
+    WIDTH="${WIDTH:-$COMPRESS_WIDTH}"
+    profile_args=(-profile:v main)
+fi
 
 if [[ -n "$DIR_MODE" ]]; then
     shopt -s nullglob
@@ -137,7 +149,7 @@ for f in "${INPUTS[@]}"; do
     filter+="${labels}concat=n=${n}:v=1:a=0[out]"
 
     args+=(-filter_complex "$filter" -map "[out]" -an
-           -c:v libx264 -preset "$PRESET" -crf "$CRF" -pix_fmt yuv420p
+           -c:v libx264 ${profile_args[@]+"${profile_args[@]}"} -preset "$PRESET" -crf "$CRF" -pix_fmt yuv420p
            -movflags +faststart "$out")
 
     echo "[$i/$total] $(basename "$f") → $(basename "$out")"
